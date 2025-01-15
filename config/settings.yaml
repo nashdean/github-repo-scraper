@@ -1,0 +1,13 @@
+api:
+  base_url: "https://api.github.com"
+  rate_limit_pause: 60  # seconds to wait when rate limited
+  timeout: 30
+
+scraper:
+  max_repos: 10
+  topics: ["python", "javascript", "machine-learning"]
+  min_stars: 100
+
+output:
+  format: "json"
+  path: "data/repos"
