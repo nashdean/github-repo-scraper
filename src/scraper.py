@@ -10,7 +10,22 @@ class GitHubScraper:
         self.results = []
 
     def _create_search_query(self, topic: str) -> str:
-        return f"topic:{topic} stars:>={self.config['min_stars']}"
+        """Create GitHub search query with optional star range"""
+        query = f"topic:{topic}"
+        
+        # Handle optional star range parameters
+        stars_config = self.config.get('stars', {})
+        stars_min = stars_config.get('min')
+        stars_max = stars_config.get('max')
+        
+        if stars_min is not None and stars_max is not None:
+            query += f" stars:{stars_min}..{stars_max}"
+        elif stars_min is not None:
+            query += f" stars:>={stars_min}"
+        elif stars_max is not None:
+            query += f" stars:<={stars_max}"
+            
+        return query
 
     def scrape_repositories(self) -> List[Dict[str, Any]]:
         """Scrape repositories and include owner activity data."""

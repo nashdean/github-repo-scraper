@@ -7,7 +7,18 @@ api:
 scraper:
   max_repos: 10
   topics: ["python", "javascript", "machine-learning"]
-  min_stars: 100
+  # Stars config is now optional. You can:
+  # 1. Specify both min and max:
+  stars:
+   min: 100
+   max: 500
+  # 2. Specify only min:
+  #stars:
+  #  min: 100
+  # 3. Specify only max:
+  #stars:
+  #  max: 500
+  # 4. Remove stars section entirely for no limits
 
 output:
   format: "json"
