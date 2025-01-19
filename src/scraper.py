@@ -13,6 +13,7 @@ class GitHubScraper:
         return f"topic:{topic} stars:>={self.config['min_stars']}"
 
     def scrape_repositories(self) -> List[Dict[str, Any]]:
+        """Scrape repositories and include owner activity data."""
         for topic in self.config['topics']:
             query = self._create_search_query(topic)
             page = 1
@@ -26,6 +27,7 @@ class GitHubScraper:
                     if len(self.results) >= self.config['max_repos']:
                         break
                     
+                    # This will now include owner activity data
                     detailed_repo = self.client.get_repository(
                         repo['owner']['login'],
                         repo['name']

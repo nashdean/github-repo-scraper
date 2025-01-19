@@ -2,6 +2,7 @@ api:
   base_url: "https://api.github.com"
   rate_limit_pause: 60  # seconds to wait when rate limited
   timeout: 30
+  activity_limit: 30  # Number of days of user activity to fetch
 
 scraper:
   max_repos: 10
