@@ -38,6 +38,10 @@ scraper:
       - "documentation" 
       - "doc"
       - "wiki"
+    markdown_scoring:
+      enabled: true
+      weight: 10  # Points to award for markdown file presence
+      min_files: 2  # Minimum files for full points
 
 output:
   format: "json"

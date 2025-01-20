@@ -271,6 +271,13 @@ class GitHubAPIClient:
             main_language = max(langs_response.json().items(), key=lambda x: x[1])[0]
             comment_ratio = self._calculate_comment_ratio(owner, repo, main_language)
 
+            # Get repository info for default branch
+            repo_info = self._get_repo_data(owner, repo)
+            default_branch = repo_info.get('default_branch', 'main')
+
+            # Scan markdown files
+            markdown_stats = self._scan_markdown_files(owner, repo, default_branch)
+
             # Enhanced documentation quality scoring
             doc_quality = {
                 'score': 0,
@@ -351,6 +358,35 @@ class GitHubAPIClient:
                     f"Consider adding these important sections: {', '.join(missing_sections)}"
                 )
 
+            # Add markdown files scoring (10 points max)
+            markdown_config = doc_filter.get('markdown_scoring', {})
+            if markdown_config.get('enabled', True):
+                weight = markdown_config.get('weight', 10)
+                min_files = markdown_config.get('min_files', 2)
+                
+                markdown_score = min(weight, (markdown_stats['count'] / min_files) * weight)
+                doc_quality['scoring_breakdown']['markdown_files'] = {
+                    'score': markdown_score,
+                    'max_score': weight,
+                    'criteria': [
+                        f"Found {markdown_stats['count']} markdown files with {markdown_stats['total_words']} total words ({markdown_score:.1f} points)"
+                    ]
+                }
+
+                if markdown_stats['sections_found']:
+                    # Bonus points for sections found in other markdown files
+                    additional_sections = set(markdown_stats['sections_found']) - set(readme_sections)
+                    if additional_sections:
+                        doc_quality['scoring_breakdown']['readme_sections']['criteria'].append(
+                            f"Additional sections found in markdown files: {', '.join(additional_sections)}"
+                        )
+                        # Add up to 5 bonus points for additional sections
+                        bonus = min(5, len(additional_sections))
+                        doc_quality['scoring_breakdown']['readme_sections']['score'] += bonus
+                        doc_quality['scoring_breakdown']['readme_sections']['criteria'].append(
+                            f"Bonus points for additional markdown sections: +{bonus}"
+                        )
+
             # Calculate total score (0-100)
             total_score = sum(
                 category['score'] 
@@ -368,15 +404,18 @@ class GitHubAPIClient:
             else:
                 doc_quality['assessment'] = "Needs improvement"
 
-            return {
+            result = {
                 'has_readme': has_readme,
                 'readme_word_count': readme_word_count,
                 'readme_sections': readme_sections,
                 'docs_folders': docs_folders,
                 'all_folders': all_folders,
                 'code_comment_ratio': comment_ratio,
+                'markdown_files': markdown_stats,
                 'quality_summary': doc_quality
             }
+            
+            return result
 
         except Exception as e:
             print(f"Error getting documentation stats: {str(e)}")
@@ -387,6 +426,7 @@ class GitHubAPIClient:
                 'docs_folders': [],
                 'all_folders': [],
                 'code_comment_ratio': 0,
+                'markdown_files': {'count': 0, 'total_words': 0, 'sections_found': []},
                 'quality_summary': {
                     'score': 0,
                     'assessment': 'Unable to analyze',
@@ -596,3 +636,44 @@ class GitHubAPIClient:
                     break
                     
         return found_sections
+
+    def _scan_markdown_files(self, owner: str, repo: str, default_branch: str) -> Dict[str, Any]:
+        """Scan repository for markdown files and their contents."""
+        try:
+            # Get full repository tree
+            url = f"{self.base_url}/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            
+            # Find all markdown files
+            markdown_files = [
+                f for f in response.json()['tree']
+                if f['type'] == 'blob' and f['path'].lower().endswith(('.md', '.markdown'))
+            ]
+            
+            sections_found = set()
+            total_words = 0
+            
+            for file in markdown_files:
+                content_response = self.session.get(file['url'], timeout=self.timeout)
+                if content_response.status_code == 200:
+                    import base64
+                    content = base64.b64decode(content_response.json()['content']).decode('utf-8')
+                    
+                    # Count words
+                    total_words += len(content.split())
+                    
+                    # Extract headers and categorize sections
+                    headers = self._parse_markdown_headers(content)
+                    file_sections = self._categorize_sections(headers)
+                    sections_found.update(file_sections.keys())
+            
+            return {
+                'count': len(markdown_files),
+                'total_words': total_words,
+                'sections_found': list(sections_found)
+            }
+            
+        except Exception as e:
+            print(f"Error scanning markdown files: {str(e)}")
+            return {'count': 0, 'total_words': 0, 'sections_found': []}
