@@ -6,7 +6,7 @@ api:
 
 scraper:
   max_repos: 10
-  topics: ["python", "javascript", "machine-learning"]
+  topics: ["swift", "ios"]
   # Stars config is now optional. You can:
   # 1. Specify both min and max:
   stars:
@@ -19,6 +19,25 @@ scraper:
   #stars:
   #  max: 500
   # 4. Remove stars section entirely for no limits
+
+  # Push date filter settings
+  push_date_filter:
+    enabled: true
+    type: "days"  # can be "days" or "date"
+    days: 30  # Only include repos pushed within last 30 days
+    # date: "2024-01-01"  # Or use specific date (YYYY-MM-DD format)
+
+  # Documentation quality filter settings
+  doc_filter:
+    enabled: true
+    min_readme_words: 200  # Minimum words in README to be considered well-documented
+    min_code_comment_ratio: 5  # Minimum percentage of comments to code
+    require_docs_folder: true  # Require docs/ folder or equivalent
+    docs_folder_patterns:  # Folder names that count as documentation
+      - "docs"
+      - "documentation" 
+      - "doc"
+      - "wiki"
 
 output:
   format: "json"
