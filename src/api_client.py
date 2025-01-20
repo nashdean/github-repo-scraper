@@ -65,9 +65,10 @@ class GitHubAPIClient:
     def __init__(self, token: str, config: Dict[str, Any]):
         self.token = token
         self.config = config  # Store the entire config
-        self.base_url = config['base_url']
-        self.timeout = config['timeout']
-        self.rate_limit_pause = config['rate_limit_pause']
+        api_config = config['api']  # Get api section
+        self.base_url = api_config['base_url']
+        self.timeout = api_config['timeout']
+        self.rate_limit_pause = api_config['rate_limit_pause']
         self.session = requests.Session()
         self.session.headers.update({
             'Authorization': f'token {token}',
@@ -228,7 +229,7 @@ class GitHubAPIClient:
         """Get documentation related statistics for a repository."""
         try:
             # Get config values first
-            doc_filter = self.config.get('doc_filter', {})
+            doc_filter = self.config.get('scraper', {}).get('doc_filter', {})
             min_words = doc_filter.get('min_readme_words', 200)
             min_ratio = doc_filter.get('min_code_comment_ratio', 5)
 
@@ -654,6 +655,23 @@ class GitHubAPIClient:
             sections_found = set()
             total_words = 0
             
+            quality_stats = {
+                'grammar_errors': 0,
+                'files_analyzed': 0
+            }
+
+            # Initialize quality checkers if enabled
+            doc_filter = self.config.get('scraper', {}).get('doc_filter', {})
+            quality_checks = doc_filter.get('markdown_scoring', {}).get('quality_checks', {})
+            grammar_tool = None
+            if quality_checks.get('enabled'):
+                try:
+                    import language_tool_python
+                    grammar_tool = language_tool_python.LanguageToolPublicAPI("en-US")
+                    print("Grammar tool initialized successfully")
+                except Exception as e:
+                    print(f"Failed to initialize grammar tool: {e}")
+
             for file in markdown_files:
                 content_response = self.session.get(file['url'], timeout=self.timeout)
                 if content_response.status_code == 200:
@@ -663,17 +681,43 @@ class GitHubAPIClient:
                     # Count words
                     total_words += len(content.split())
                     
+                    # Check grammar if tool is available
+                    if grammar_tool:
+                        text_blocks = re.findall(r'^(?!```)[^`]+?$', content, re.MULTILINE)
+                        print(f"Checking {len(text_blocks)} text blocks for grammar...")
+                        for block in text_blocks:
+                            try:
+                                grammar_matches = grammar_tool.check(block)
+                                quality_stats['grammar_errors'] += len(grammar_matches)
+                            except Exception as e:
+                                print(f"Grammar check failed for file: {e}")
+                        quality_stats['files_analyzed'] += 1
+                    
                     # Extract headers and categorize sections
                     headers = self._parse_markdown_headers(content)
                     file_sections = self._categorize_sections(headers)
                     sections_found.update(file_sections.keys())
+
+            # Calculate quality scores if grammar checking was enabled and successful
+            if grammar_tool and quality_stats['files_analyzed'] > 0:
+                max_grammar_errors = quality_checks.get('max_grammar_errors', 10)
+                grammar_weight = quality_checks.get('grammar_weight', 10)
+                grammar_score = max(0, (1 - quality_stats['grammar_errors'] / max_grammar_errors)) * grammar_weight
+                quality_stats['grammar_score'] = grammar_score
+                quality_stats['total_quality_score'] = grammar_score
             
             return {
                 'count': len(markdown_files),
                 'total_words': total_words,
-                'sections_found': list(sections_found)
+                'sections_found': list(sections_found),
+                'quality_stats': quality_stats if quality_stats['files_analyzed'] > 0 else None
             }
             
         except Exception as e:
             print(f"Error scanning markdown files: {str(e)}")
-            return {'count': 0, 'total_words': 0, 'sections_found': []}
+            return {
+                'count': 0,
+                'total_words': 0,
+                'sections_found': [],
+                'quality_stats': None
+            }

@@ -40,8 +40,12 @@ scraper:
       - "wiki"
     markdown_scoring:
       enabled: true
-      weight: 10  # Points to award for markdown file presence
+      weight: 5  # Points to award for markdown file presence
       min_files: 2  # Minimum files for full points
+      quality_checks:
+        enabled: false  # Set to true to enable markdown quality checks -- will significantly slow down scraping
+        grammar_weight: 10  # Points for grammar checking
+        max_grammar_errors: 10  # Max grammar errors before 0 points
 
 output:
   format: "json"

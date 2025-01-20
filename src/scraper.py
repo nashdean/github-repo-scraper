@@ -82,9 +82,10 @@ class GitHubScraper:
                         repo['owner']['login'],
                         repo['name']
                     )
-                    
+                    print('Checking repo:', detailed_repo['full_name'])
                     # Only include repos that match documentation criteria
                     if self._should_include_repo(detailed_repo):
+                        print('Included repo:', detailed_repo['full_name'])
                         self.results.append(detailed_repo)
                 
                 page += 1

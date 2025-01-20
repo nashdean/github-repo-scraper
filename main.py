@@ -6,18 +6,18 @@ def main():
     # Load configuration
     config = Config()
     
-    # Initialize API client
+    # Initialize API client with full config
     api_client = GitHubAPIClient(
         token=config.github_token,
-        config=config.api_settings
+        config=config.all_settings # Pass full config structure
     )
     
     # Initialize and run scraper
-    scraper = GitHubScraper(api_client, config.scraper_settings)
+    scraper = GitHubScraper(api_client, config.all_settings['scraper'])
     repositories = scraper.scrape_repositories()
     
     # Save results
-    scraper.save_results(config.output_settings)
+    scraper.save_results(config.all_settings['output'])
     print(f"Scraped {len(repositories)} repositories successfully!")
 
 if __name__ == "__main__":

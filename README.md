@@ -11,6 +11,27 @@ A tool for scraping GitHub repositories with configurable filters including docu
 GITHUB_TOKEN=your_token_here
 ```
 
+### Optionally Create Virtual Env
+You can setup a virtual environment to keep your Python environments separate -- this is recommended to avoid clashing dependencies.
+
+1. Use `venv` to create a new virtual environment:
+```bash
+python -m venv venv
+```
+2. Activate the virtual environment:
+```bash
+source venv/bin/activate
+```
+3. Install dependencies as usual:
+```bash
+pip install -r requirements.txt
+```
+
+To deactivate the virtual environment:
+```bash
+deactivate
+```
+
 ## Configuration
 
 All configuration options are in `config/settings.yaml`. Here are the available options:
