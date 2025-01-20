@@ -5,6 +5,62 @@ from typing import Dict, Any, List
 import re
 from bs4 import BeautifulSoup
 
+# Define section groups with synonyms
+SECTION_GROUPS = {
+    'setup': {
+        'title': 'Setup/Installation',
+        'synonyms': {'setup', 'installation', 'getting started', 'quickstart', 'quick start', 'initialize', 'configuration', 'config'}
+    },
+    'usage': {
+        'title': 'Usage/Examples',
+        'synonyms': {'usage', 'examples', 'example', 'how to use', 'demo', 'demonstration', 'tutorial'}
+    },
+    'api': {
+        'title': 'API Documentation',
+        'synonyms': {'api', 'documentation', 'reference', 'interfaces'}
+    },
+    'contributing': {
+        'title': 'Contributing',
+        'synonyms': {'contributing', 'development', 'developing', 'developers', 'maintainers', 'guidelines', 'contribute'}
+    },
+    'requirements': {
+        'title': 'Requirements',
+        'synonyms': {'requirements', 'prerequisites', 'dependencies', 'environment'}
+    },
+    'testing': {
+        'title': 'Testing',
+        'synonyms': {'testing', 'tests', 'running tests'}
+    },
+    'build': {
+        'title': 'Build/Deploy',
+        'synonyms': {'build', 'building', 'deploy', 'deployment', 'installation'}
+    },
+    'configuration': {
+        'title': 'Configuration',
+        'synonyms': {'config', 'configuration', 'settings', 'options', 'parameters'}
+    },
+    'troubleshooting': {
+        'title': 'Troubleshooting',
+        'synonyms': {'troubleshooting', 'debugging', 'faq', 'common issues', 'known issues', 'problems', 'errors', 'fixes', 'solutions', 'issues', 'help', 'support', 'troubleshoot', 'workarounds', 'resolutions', 'bugs'}
+    },
+    'support': {
+        'title': 'Support',
+        'synonyms': {'support', 'help', 'contact', 'community', 'feedback', 'suggestions', 'need help', 'report issue', 'get in touch', 'contact us'}
+    },
+    'license': {
+        'title': 'License',
+        'synonyms': {'license', 'licensing', 'copyright'}
+    },
+    'about': {
+        'title': 'About',
+        'synonyms': {'about', 'introduction', 'overview', 'summary', 'description', 'details', 'what it does', 'what it is', 'what is included'}
+    },
+    'features': {
+        'title': 'Features',
+        'synonyms': {'features', 'capabilities', 'functionality', 'highlights', 'overview', 'scope', 'objectives', 'goals', 'summary', 'description', 'details', 'what it does', 'what it is', 'what is included'}
+    }
+}
+
 class GitHubAPIClient:
     def __init__(self, token: str, config: Dict[str, Any]):
         self.token = token
@@ -171,6 +227,11 @@ class GitHubAPIClient:
     def _get_repo_documentation_stats(self, owner: str, repo: str) -> Dict[str, Any]:
         """Get documentation related statistics for a repository."""
         try:
+            # Get config values first
+            doc_filter = self.config.get('doc_filter', {})
+            min_words = doc_filter.get('min_readme_words', 200)
+            min_ratio = doc_filter.get('min_code_comment_ratio', 5)
+
             # Get README content
             readme_url = f"{self.base_url}/repos/{owner}/{repo}/readme"
             readme_response = self.session.get(readme_url, timeout=self.timeout)
@@ -185,10 +246,9 @@ class GitHubAPIClient:
                     decoded_content = base64.b64decode(content).decode('utf-8')
                     # Count words and analyze sections
                     readme_word_count = len(decoded_content.split())
-                    # Check for common README sections
-                    sections = ['installation', 'usage', 'api', 'documentation', 'example', 'contributing']
-                    readme_sections = [section for section in sections 
-                                    if section.lower() in decoded_content.lower()]
+                    # Extract and analyze markdown headers
+                    headers = self._parse_markdown_headers(decoded_content)
+                    readme_sections = list(self._categorize_sections(headers).keys())
 
             # Check for documentation folders
             contents_url = f"{self.base_url}/repos/{owner}/{repo}/contents"
@@ -211,42 +271,102 @@ class GitHubAPIClient:
             main_language = max(langs_response.json().items(), key=lambda x: x[1])[0]
             comment_ratio = self._calculate_comment_ratio(owner, repo, main_language)
 
-            # Generate documentation quality summary
+            # Enhanced documentation quality scoring
             doc_quality = {
-                'score': 0,  # Will be calculated below
+                'score': 0,
                 'issues': [],
-                'suggestions': []
+                'suggestions': [],
+                'scoring_breakdown': {
+                    'readme': {
+                        'score': 0,
+                        'max_score': 40,
+                        'criteria': []
+                    },
+                    'docs_folder': {
+                        'score': 0,
+                        'max_score': 20,
+                        'criteria': []
+                    },
+                    'code_comments': {
+                        'score': 0,
+                        'max_score': 20,
+                        'criteria': []
+                    },
+                    'readme_sections': {
+                        'score': 0,
+                        'max_score': 20,
+                        'criteria': []
+                    }
+                }
             }
 
-            # Add issues and suggestions based on findings
-            min_words = self.config.get('doc_filter', {}).get('min_readme_words', 200)
-            min_ratio = self.config.get('doc_filter', {}).get('min_code_comment_ratio', 5)
+            # Score README (40 points max)
+            if has_readme:
+                readme_score = min(40, (readme_word_count / min_words) * 40)
+                doc_quality['scoring_breakdown']['readme']['score'] = readme_score
+                doc_quality['scoring_breakdown']['readme']['criteria'].append(
+                    f"README length: {readme_word_count} words ({readme_score:.1f} points)"
+                )
+                if not has_readme:
+                    doc_quality['issues'].append("No README file found")
+                    doc_quality['suggestions'].append("Add a README.md file with basic project information")
+                elif readme_word_count < min_words:
+                    doc_quality['issues'].append(f"README is too short ({readme_word_count} words)")
+                    doc_quality['suggestions'].append(f"Expand README to at least {min_words} words")
 
-            if not has_readme:
-                doc_quality['issues'].append("No README file found")
-                doc_quality['suggestions'].append("Add a README.md file with basic project information")
-            elif readme_word_count < min_words:
-                doc_quality['issues'].append(f"README is too short ({readme_word_count} words)")
-                doc_quality['suggestions'].append(f"Expand README to at least {min_words} words")
-
+            # Score documentation folder (20 points max)
+            folder_score = 20 if docs_folders else 0
+            doc_quality['scoring_breakdown']['docs_folder']['score'] = folder_score
+            doc_quality['scoring_breakdown']['docs_folder']['criteria'].append(
+                f"Documentation folders found: {', '.join(docs_folders) or 'None'} ({folder_score} points)"
+            )
             if not docs_folders:
                 doc_quality['issues'].append("No documentation folder found")
                 doc_quality['suggestions'].append("Add a docs/ folder with detailed documentation")
 
+            # Score code comments (20 points max)
+            comment_score = min(20, (comment_ratio / min_ratio) * 20)
+            doc_quality['scoring_breakdown']['code_comments']['score'] = comment_score
+            doc_quality['scoring_breakdown']['code_comments']['criteria'].append(
+                f"Code comment ratio: {comment_ratio:.1f}% ({comment_score:.1f} points)"
+            )
             if comment_ratio < min_ratio:
                 doc_quality['issues'].append(f"Low code comment ratio ({comment_ratio:.1f}%)")
                 doc_quality['suggestions'].append(f"Add more code comments to reach {min_ratio}% coverage")
 
-            # Calculate overall documentation score (0-100)
-            score = 0
-            if has_readme:
-                score += 25
-                score += min(25, (readme_word_count / min_words) * 25)
-            if docs_folders:
-                score += 25
-            if comment_ratio >= min_ratio:
-                score += 25
-            doc_quality['score'] = round(score)
+            # Score README sections (20 points max)
+            expected_section_count = len(SECTION_GROUPS)
+            found_section_count = len(readme_sections)
+            section_score = min(20, (found_section_count / expected_section_count) * 20)
+            
+            doc_quality['scoring_breakdown']['readme_sections']['score'] = section_score
+            doc_quality['scoring_breakdown']['readme_sections']['criteria'].append(
+                f"Found {found_section_count}/{expected_section_count} standard sections: {', '.join(readme_sections)} ({section_score:.1f} points)"
+            )
+            
+            # Add suggestions for missing important sections
+            missing_sections = set(section_info['title'] for section_info in SECTION_GROUPS.values()) - set(readme_sections)
+            if missing_sections:
+                doc_quality['suggestions'].append(
+                    f"Consider adding these important sections: {', '.join(missing_sections)}"
+                )
+
+            # Calculate total score (0-100)
+            total_score = sum(
+                category['score'] 
+                for category in doc_quality['scoring_breakdown'].values()
+            )
+            doc_quality['score'] = round(total_score)
+
+            # Add overall quality assessment
+            if total_score >= 90:
+                doc_quality['assessment'] = "Excellent documentation"
+            elif total_score >= 75:
+                doc_quality['assessment'] = "Good documentation"
+            elif total_score >= 50:
+                doc_quality['assessment'] = "Fair documentation"
+            else:
+                doc_quality['assessment'] = "Needs improvement"
 
             return {
                 'has_readme': has_readme,
@@ -269,8 +389,10 @@ class GitHubAPIClient:
                 'code_comment_ratio': 0,
                 'quality_summary': {
                     'score': 0,
+                    'assessment': 'Unable to analyze',
                     'issues': ['Failed to analyze documentation'],
-                    'suggestions': ['Retry analysis or check repository accessibility']
+                    'suggestions': ['Retry analysis or check repository accessibility'],
+                    'scoring_breakdown': {}
                 }
             }
 
@@ -292,6 +414,11 @@ class GitHubAPIClient:
                 'JavaScript': '.js',
                 'Java': '.java',
                 'Swift': '.swift',
+                'TypeScript': '.ts',
+                'C#': '.cs',
+                'C++': '.cpp',
+                'Ruby': '.rb',
+                'Go': '.go',
                 # Add more languages as needed
             }
             
@@ -302,8 +429,72 @@ class GitHubAPIClient:
             source_files = [f for f in response.json()['tree'] 
                           if f['type'] == 'blob' and f['path'].endswith(ext)][:5]
             
+            # Language-specific comment patterns
+            comment_patterns = {
+                'Python': {
+                    'single_line': ['#'],
+                    'multi_line': ["'''", '"""'],
+                    'inline': ['#']
+                },
+                'JavaScript': {
+                    'single_line': ['//'],
+                    'multi_line': ['/*', '*/'],
+                    'inline': ['//', '/*']
+                },
+                'Java': {
+                    'single_line': ['//'],
+                    'multi_line': ['/*', '*/'],
+                    'inline': ['//', '/*']
+                },
+                'Swift': {
+                    'single_line': ['//'],
+                    'multi_line': ['/*', '*/'],
+                    'inline': ['//', '/*'],
+                    'documentation': ['///']
+                },
+                'TypeScript': {
+                    'single_line': ['//'],
+                    'multi_line': ['/*', '*/'],
+                    'inline': ['//', '/*'],
+                    'documentation': ['///']
+                },
+                'C#': {
+                    'single_line': ['//'],
+                    'multi_line': ['/*', '*/'],
+                    'inline': ['//', '/*'],
+                    'documentation': ['///']
+                },
+                'C++': {
+                    'single_line': ['//'],
+                    'multi_line': ['/*', '*/'],
+                    'inline': ['//', '/*'],
+                    'documentation': ['///']
+                },
+                'Ruby': {
+                    'single_line': ['#'],
+                    'multi_line': ['=begin', '=end'],
+                    'inline': ['#'],
+                    'documentation': ['##']
+                },
+                'Go': {
+                    'single_line': ['//'],
+                    'multi_line': ['/*', '*/'],
+                    'inline': ['//'],
+                    'documentation': ['///']
+                },
+                # Add more languages as needed
+
+            }
+
+            patterns = comment_patterns.get(language, {
+                'single_line': ['#', '//'],
+                'multi_line': ['/*', '*/', "'''", '"""'],
+                'inline': ['#', '//']
+            })
+
             total_lines = 0
             comment_lines = 0
+            in_multiline_comment = False
             
             for file in source_files:
                 content_response = self.session.get(file['url'], timeout=self.timeout)
@@ -313,11 +504,95 @@ class GitHubAPIClient:
                     lines = content.split('\n')
                     total_lines += len(lines)
                     
-                    # Count comments (simplified - could be enhanced)
-                    comment_lines += sum(1 for line in lines if line.strip().startswith(('#', '//', '/*', '*')))
+                    for line in lines:
+                        stripped = line.strip()
+                        
+                        # Skip empty lines
+                        if not stripped:
+                            total_lines -= 1
+                            continue
+
+                        is_comment = False
+                        
+                        # Check for multi-line comment markers
+                        for marker in patterns['multi_line']:
+                            if marker in stripped:
+                                if marker == '/*' or marker == "'''" or marker == '"""':
+                                    in_multiline_comment = True
+                                elif marker == '*/' or marker == "'''" or marker == '"""':
+                                    in_multiline_comment = False
+                                    is_comment = True
+                                    break
+
+                        # Count lines in multi-line comments
+                        if in_multiline_comment:
+                            is_comment = True
+                        
+                        # Check for single-line comments
+                        if not is_comment:
+                            for marker in patterns['single_line']:
+                                if stripped.startswith(marker):
+                                    is_comment = True
+                                    break
+                        
+                        # Check for documentation comments
+                        if not is_comment and 'documentation' in patterns:
+                            for marker in patterns['documentation']:
+                                if stripped.startswith(marker):
+                                    is_comment = True
+                                    break
+
+                        # Check for inline comments (excluding strings)
+                        if not is_comment:
+                            for marker in patterns['inline']:
+                                # Basic string detection to avoid false positives
+                                parts = stripped.split('"')
+                                for i in range(0, len(parts), 2):  # Only check outside string literals
+                                    if marker in parts[i]:
+                                        is_comment = True
+                                        break
+                                if is_comment:
+                                    break
+
+                        if is_comment:
+                            comment_lines += 1
             
             return (comment_lines / total_lines * 100) if total_lines > 0 else 0
 
         except Exception as e:
             print(f"Error calculating comment ratio for {owner}/{repo}: {str(e)}")
             return 0
+
+    def _parse_markdown_headers(self, content: str) -> List[str]:
+        """Extract headers from markdown content."""
+        # Match both # style and underline style headers
+        header_patterns = [
+            r'^#{1,6}\s*(.*?)\s*$',  # # style headers
+            r'^(.*?)\n[=\-]+\s*$'    # underline style headers
+        ]
+        
+        headers = []
+        lines = content.split('\n')
+        
+        for i, line in enumerate(lines):
+            # Check # style headers
+            if match := re.match(header_patterns[0], line, re.MULTILINE):
+                headers.append(match.group(1).lower())
+            # Check underline style headers
+            elif i > 0 and (match := re.match(header_patterns[1], '\n'.join(lines[i-1:i+1]), re.MULTILINE)):
+                headers.append(match.group(1).lower())
+                
+        return headers
+
+    def _categorize_sections(self, headers: List[str]) -> Dict[str, bool]:
+        """Categorize headers into standardized sections."""
+        found_sections = {}
+        
+        for header in headers:
+            header_lower = header.lower()
+            for section_key, section_info in SECTION_GROUPS.items():
+                if header_lower in section_info['synonyms']:
+                    found_sections[section_info['title']] = True
+                    break
+                    
+        return found_sections
