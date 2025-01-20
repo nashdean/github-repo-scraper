@@ -48,20 +48,40 @@ class GitHubScraper:
             
         doc_stats = repo.get('documentation_stats', {})
         
-        # Check documentation criteria
-        if not doc_stats.get('has_readme', False):
-            return True
+        # Check score threshold if enabled
+        score_threshold = doc_filter.get('score_threshold', {})
+        if not score_threshold.get('enabled', False):
+
+            # Basic documentation criteria - Return True for repos that don't meet criteria
+            if not doc_stats.get('has_readme', False):
+                return True
+                
+            if doc_stats.get('readme_word_count', 0) < doc_filter.get('min_readme_words', 200):
+                return True
+                
+            if doc_filter.get('require_docs_folder', True) and not doc_stats.get('docs_folders', []):
+                return True
+                
+            if doc_stats.get('code_comment_ratio', 0) < doc_filter.get('min_code_comment_ratio', 5):
+                return True
+
+        # Score threshold is enabled
+        else:
+            score = doc_stats.get('quality_summary', {}).get('score', 0)
+            min_score = score_threshold.get('min')
+            max_score = score_threshold.get('max')
             
-        if doc_stats.get('readme_word_count', 0) < doc_filter.get('min_readme_words', 200):
-            return True
+            if min_score is not None and max_score is not None:
+                if not min_score <= score <= max_score:
+                    return False
+            elif min_score is not None:
+                if score < min_score:
+                    return False
+            elif max_score is not None:
+                if score > max_score:
+                    return False
             
-        if doc_filter.get('require_docs_folder', True) and not doc_stats.get('docs_folders', []):
-            return True
-            
-        if doc_stats.get('code_comment_ratio', 0) < doc_filter.get('min_code_comment_ratio', 5):
-            return True
-            
-        return False
+        return True
 
     def scrape_repositories(self) -> List[Dict[str, Any]]:
         """Scrape repositories and filter based on documentation quality."""
@@ -70,6 +90,7 @@ class GitHubScraper:
             page = 1
             
             while len(self.results) < self.config['max_repos']:
+                print('Searching page:', page)
                 response = self.client.search_repositories(query, page)
                 if not response['items']:
                     break
@@ -89,12 +110,16 @@ class GitHubScraper:
                         self.results.append(detailed_repo)
                 
                 page += 1
-
-        return self.results
+        if isinstance(self.results, list):
+            return self.results
+        else:
+            return []
 
     def save_results(self, output_settings: Dict[str, str]) -> None:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
         ensure_dir(output_settings['path'])
-        output_file = f"{output_settings['path']}/repositories.{output_settings['format']}"
+        output_file = f"{output_settings['path']}/repositories_{timestamp}.{output_settings['format']}"
         
         with open(output_file, 'w') as f:
             json.dump(self.results, f, indent=2)

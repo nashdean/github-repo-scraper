@@ -78,7 +78,9 @@ class GitHubAPIClient:
 
     def _handle_rate_limit(self, response: requests.Response) -> None:
         if response.status_code == 403 and 'X-RateLimit-Remaining' in response.headers:
+            print(f"Rate limit remaining: {response.headers['X-RateLimit-Remaining']}. Will reset at {response.headers['X-RateLimit-Reset']}")
             if int(response.headers['X-RateLimit-Remaining']) == 0:
+                print(f"Rate limit exceeded, pausing for {self.rate_limit_pause} seconds...")
                 time.sleep(self.rate_limit_pause)
 
     def search_repositories(self, query: str, page: int = 1) -> Dict[str, Any]:
@@ -224,6 +226,15 @@ class GitHubAPIClient:
         except Exception as e:
             print(f"Error processing profile for {username}: {str(e)}")
             return {'email': None, 'social_links': {}}
+    
+    def _read_file_content(self, content: str, encodings=['utf-8', 'latin-1', 'iso-8859-1']) -> str:
+        """Try multiple encodings to read file content."""
+        for encoding in encodings:
+            try:
+                return content.encode('ascii').decode('base64').decode(encoding)
+            except (UnicodeDecodeError, UnicodeEncodeError) as e:
+                continue
+        return ""  # Return empty string if all encodings fail
 
     def _get_repo_documentation_stats(self, owner: str, repo: str) -> Dict[str, Any]:
         """Get documentation related statistics for a repository."""
@@ -244,8 +255,7 @@ class GitHubAPIClient:
                 import base64
                 content = readme_response.json().get('content', '')
                 if content:
-                    decoded_content = base64.b64decode(content).decode('utf-8')
-                    # Count words and analyze sections
+                    decoded_content = self._read_file_content(readme_response.json()['content'])
                     readme_word_count = len(decoded_content.split())
                     # Extract and analyze markdown headers
                     headers = self._parse_markdown_headers(decoded_content)

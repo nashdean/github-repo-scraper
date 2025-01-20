@@ -14,6 +14,7 @@ class ApiConfig:
 @dataclass 
 class DocFilterConfig:
     enabled: bool
+    score_threshold: int
     min_readme_words: int 
     min_code_comment_ratio: float
     require_docs_folder: bool
@@ -69,6 +70,7 @@ class Config:
             push_date_filter=scraper['push_date_filter'],
             doc_filter=DocFilterConfig(
                 enabled=doc_filter['enabled'],
+                score_threshold=doc_filter.get('score_threshold', {}),
                 min_readme_words=doc_filter['min_readme_words'],
                 min_code_comment_ratio=doc_filter['min_code_comment_ratio'],
                 require_docs_folder=doc_filter['require_docs_folder'],

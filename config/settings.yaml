@@ -30,6 +30,11 @@ scraper:
   # Documentation quality filter settings
   doc_filter:
     enabled: true
+    # Add score threshold config
+    score_threshold:
+      enabled: true
+      min: null  # Only include repos with score >= 50
+      max: 50  # Include any score up to max (set null for no upper limit)
     min_readme_words: 200  # Minimum words in README to be considered well-documented
     min_code_comment_ratio: 5  # Minimum percentage of comments to code
     require_docs_folder: true  # Require docs/ folder or equivalent
