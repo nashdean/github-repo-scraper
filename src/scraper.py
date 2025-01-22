@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from .api_client import GitHubAPIClient
 from .utils import ensure_dir
 from jinja2 import Template
+from .html_renderer import HTMLRenderer
 
 class GitHubScraper:
     def __init__(self, api_client: GitHubAPIClient, config: Dict[str, Any]):
@@ -111,11 +112,14 @@ class GitHubScraper:
                     request_count += 1
                     if request_count % 10 == 0:  # Print rate limit details every 10 requests
                         self.client.print_rate_limit()
-                    print('Checking repo:', detailed_repo['full_name'])
+                    
                     # Only include repos that match documentation criteria
                     if self._should_include_repo(detailed_repo):
                         print('Included repo:', detailed_repo['full_name'])
                         self.results.append(detailed_repo)
+                        print(f'Repos stored: {len(self.results)}')
+                    print()
+                print()
                 
                 page += 1
         if isinstance(self.results, list):
@@ -164,8 +168,8 @@ class GitHubScraper:
     def save_results(self, output_settings: Dict[str, str]) -> None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-        ensure_dir(output_settings['path'])
-        output_file = f"{output_settings['path']}/repositories_{timestamp}.{output_settings['format']}"
+        output_dir = f"{output_settings['path']}/repositories_{timestamp}"
+        ensure_dir(output_dir)
         
         filtered_results = [self._filter_repo_fields(repo) for repo in self.results]
         
@@ -179,69 +183,33 @@ class GitHubScraper:
         metadata = {
             "timestamp": timestamp,
             "settings": self.config,
-            "rate_limit_info": rate_limit_info
+            "rate_limit_info": rate_limit_info,
+            "total_repos_stored": len(filtered_results),
+            "total_repos_scraped": len(self.results)
         }
         
-        with open(output_file, 'w') as f:
+        with open(f"{output_dir}/repositories.json", 'w') as f:
             json.dump({"repositories": filtered_results, "metadata": metadata}, f, indent=2)
         
         if output_settings['format'] == 'html':
-            self._save_results_as_html(output_settings['path'], timestamp, filtered_results, metadata)
+            self._save_results_as_html(output_dir, filtered_results, metadata)
 
-    def _save_results_as_html(self, path: str, timestamp: str, results: List[Dict[str, Any]], metadata: Dict[str, Any]) -> None:
-        template_str = """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>GitHub Repository Scraper Report</title>
-            <style>
-                body { font-family: Arial, sans-serif; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { border: 1px solid #ddd; padding: 8px; }
-                th { background-color: #f2f2f2; }
-            </style>
-        </head>
-        <body>
-            <h1>GitHub Repository Scraper Report</h1>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Repository</th>
-                        <th>Description</th>
-                        <th>Stars</th>
-                        <th>Forks</th>
-                        <th>Open Issues</th>
-                        <th>Documentation Score</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for repo in results %}
-                    <tr>
-                        <td><a href="{{ repo.html_url }}">{{ repo.full_name }}</a></td>
-                        <td>{{ repo.description or 'No description' }}</td>
-                        <td>{{ repo.stargazers_count }}</td>
-                        <td>{{ repo.forks_count }}</td>
-                        <td>{{ repo.open_issues_count }}</td>
-                        <td>{{ repo.documentation_stats.quality_summary.score }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <h2>Metadata</h2>
-            <p><strong>Timestamp:</strong> {{ metadata.timestamp }}</p>
-            <h3>Settings</h3>
-            <pre>{{ metadata.settings | tojson(indent=2) }}</pre>
-            <h3>Rate Limit Information</h3>
-            <p>Rate limit remaining: {{ metadata.rate_limit_info.rate_limit_remaining }}</p>
-            <p>Rate limit reset time: {{ metadata.rate_limit_info.rate_limit_reset }}</p>
-        </body>
-        </html>
-        """
-        template = Template(template_str)
-        html_content = template.render(results=results, metadata=metadata)
+    def _save_results_as_html(self, output_dir: str, results: List[Dict[str, Any]], metadata: Dict[str, Any]) -> None:
+        renderer = HTMLRenderer(HTMLRenderer.get_default_template())
+        html_content = renderer.render(results, metadata)
 
-        output_file = f"{path}/repositories_{timestamp}.html"
-        with open(output_file, 'w') as f:
+        with open(f"{output_dir}/index.html", 'w') as f:
             f.write(html_content)
+
+        score_details_dir = f"{output_dir}/score_details"
+        ensure_dir(score_details_dir)
+
+        for repo in results:
+            repo_html_content = renderer.render_repo(repo, metadata)
+            repo_filename = f"{score_details_dir}/{repo['full_name'].replace('/', '_')}.html"
+            with open(repo_filename, 'w') as f:
+                f.write(repo_html_content)
+
+        settings_html_content = renderer.render_settings(metadata)
+        with open(f"{output_dir}/settings.html", 'w') as f:
+            f.write(settings_html_content)

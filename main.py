@@ -15,6 +15,10 @@ def main():
         
         # Initialize and run scraper
         scraper = GitHubScraper(api_client, config.all_settings['scraper'])
+
+        # Show initial rate limit
+        api_client.print_rate_limit()
+
         repositories = 0
         repositories = scraper.scrape_repositories()
     except Exception as e:

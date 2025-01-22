@@ -74,14 +74,25 @@ scraper:
       - "documentation" 
       - "doc"
       - "wiki"
-    score_threshold: 50  # minimum documentation quality score
+    score_threshold:
+      enabled: true
+      min: 50  # minimum documentation quality score
+      max: null  # maximum documentation quality score (set null for no upper limit)
+    markdown_scoring:
+      enabled: true
+      weight: 5  # Points to award for markdown file presence
+      min_files: 2  # Minimum files for full points
+      quality_checks:
+        enabled: false  # Set to true to enable markdown quality checks -- will significantly slow down scraping
+        grammar_weight: 10  # Points for grammar checking
+        max_grammar_errors: 10  # Max grammar errors before 0 points
 ```
 
 ### Output Settings
 You may select the output format and directory for the scraped data. Formats include `json` and `html`. HTML is concise and easy to read, while JSON is more detailed and suitable for further processing.
 ```yaml
 output:
-  format: "json"  # output format
+  format: "html"  # output format
   path: "data/repos"  # output directory
 ```
 
@@ -92,11 +103,12 @@ The scraper performs a comprehensive analysis of repository documentation qualit
 ### Scoring System (0-100)
 
 The documentation score is calculated based on these criteria:
-- README presence and quality (up to 50 points)
-  - 25 points for having a README
-  - Up to 25 points based on README word count relative to minimum
-- Documentation folder presence (25 points)
-- Code comment ratio meeting minimum threshold (25 points)
+- README presence and quality (up to 40 points)
+  - Up to 40 points based on README word count relative to minimum
+- Documentation folder presence (20 points)
+- Code comment ratio meeting minimum threshold (20 points)
+- README sections (20 points)
+- Markdown files scoring (10 points)
 
 ### Analysis Metrics
 
@@ -105,7 +117,7 @@ For each repository, the following metrics are analyzed:
 - README sections (installation, usage, API, etc.)
 - Documentation folder presence
 - Code comment ratio (comments to code)
-- Overall folder structure
+- Markdown files presence and quality
 
 ### Quality Summary
 
@@ -148,7 +160,7 @@ Run the scraper:
 python main.py
 ```
 
-Results will be saved in JSON format, including documentation quality analysis for each repository.
+Results will be saved in the specified format, including documentation quality analysis for each repository.
 
 ## Testing
 

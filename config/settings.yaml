@@ -5,7 +5,7 @@ api:
   activity_limit: 30  # Number of days of user activity to fetch
 
 scraper:
-  max_repos: 5
+  max_repos: 3
   topics: ["python", "documentation"]
   # Stars config is now optional. You can:
   # 1. Specify both min and max:
@@ -34,7 +34,7 @@ scraper:
     score_threshold:
       enabled: true
       min: null  # Only include repos with score >= 50
-      max: 45  # Include any score up to max (set null for no upper limit)
+      max: null  # Include any score up to max (set null for no upper limit)
     min_readme_words: 200  # Minimum words in README to be considered well-documented
     min_code_comment_ratio: 5  # Minimum percentage of comments to code
     require_docs_folder: true  # Require docs/ folder or equivalent
