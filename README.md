@@ -74,9 +74,11 @@ scraper:
       - "documentation" 
       - "doc"
       - "wiki"
+    score_threshold: 50  # minimum documentation quality score
 ```
 
 ### Output Settings
+You may select the output format and directory for the scraped data. Formats include `json` and `html`. HTML is concise and easy to read, while JSON is more detailed and suitable for further processing.
 ```yaml
 output:
   format: "json"  # output format

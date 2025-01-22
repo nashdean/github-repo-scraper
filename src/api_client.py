@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import re
 from bs4 import BeautifulSoup
+import base64
 
 # Define section groups with synonyms
 SECTION_GROUPS = {
@@ -228,13 +229,20 @@ class GitHubAPIClient:
             return {'email': None, 'social_links': {}}
     
     def _read_file_content(self, content: str, encodings=['utf-8', 'latin-1', 'iso-8859-1']) -> str:
-        """Try multiple encodings to read file content."""
-        for encoding in encodings:
-            try:
-                return content.encode('ascii').decode('base64').decode(encoding)
-            except (UnicodeDecodeError, UnicodeEncodeError) as e:
-                continue
-        return ""  # Return empty string if all encodings fail
+        """Try multiple encodings to read base64 encoded file content."""
+        try:
+            decoded_content = base64.b64decode(content).decode('utf-8')
+            return decoded_content
+        except UnicodeDecodeError:
+            # Try alternate encodings if utf-8 fails
+            for encoding in encodings[1:]:
+                try:
+                    return base64.b64decode(content).decode(encoding)
+                except UnicodeDecodeError:
+                    continue
+            # If all decodings fail, return empty string
+            print("Failed to decode content with any encoding")
+            return ""
 
     def _get_repo_documentation_stats(self, owner: str, repo: str) -> Dict[str, Any]:
         """Get documentation related statistics for a repository."""
@@ -252,10 +260,9 @@ class GitHubAPIClient:
             readme_sections = []
             
             if has_readme:
-                import base64
                 content = readme_response.json().get('content', '')
                 if content:
-                    decoded_content = self._read_file_content(readme_response.json()['content'])
+                    decoded_content = self._read_file_content(content)
                     readme_word_count = len(decoded_content.split())
                     # Extract and analyze markdown headers
                     headers = self._parse_markdown_headers(decoded_content)

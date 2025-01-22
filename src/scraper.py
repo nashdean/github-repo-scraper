@@ -3,6 +3,7 @@ from typing import Dict, List, Any
 from datetime import datetime, timedelta
 from .api_client import GitHubAPIClient
 from .utils import ensure_dir
+from jinja2 import Template
 
 class GitHubScraper:
     def __init__(self, api_client: GitHubAPIClient, config: Dict[str, Any]):
@@ -115,11 +116,105 @@ class GitHubScraper:
         else:
             return []
 
+    def _filter_repo_fields(self, repo: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter out unnecessary fields from the repository data."""
+        return {
+            "repo_id": repo["id"],
+            "name": repo["name"],
+            "full_name": repo["full_name"],
+            "owner": {
+                "login": repo["owner"]["login"],
+                "id": repo["owner"]["id"],
+                "type": repo["owner"]["type"],
+                "html_url": repo["owner"]["html_url"],
+                "email": repo["owner"].get("email"),
+                "avatar_url": repo["owner"]["avatar_url"],
+                "social_links": repo["owner"].get("social_links", {})
+            },
+            "description": repo["description"],
+            "html_url": repo["html_url"],
+            "language": repo["language"],
+            "topics": repo["topics"],
+            "visibility": repo["visibility"],
+            "forks_count": repo["forks_count"],
+            "stargazers_count": repo["stargazers_count"],
+            "watchers_count": repo["watchers_count"],
+            "open_issues_count": repo["open_issues_count"],
+            "created_at": repo["created_at"],
+            "updated_at": repo["updated_at"],
+            "pushed_at": repo["pushed_at"],
+            "has_issues": repo["has_issues"],
+            "has_discussions": repo["has_discussions"],
+            "has_pages": repo["has_pages"],
+            "fork": repo["fork"],
+            "license": repo["license"],
+            "documentation_stats": repo["documentation_stats"],
+            "recent_activity": repo["owner"].get("recent_activity", {}),
+            "emails": repo.get("emails", []),
+            "social_links": repo.get("social_links", {})
+        }
+
     def save_results(self, output_settings: Dict[str, str]) -> None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         ensure_dir(output_settings['path'])
         output_file = f"{output_settings['path']}/repositories_{timestamp}.{output_settings['format']}"
         
+        filtered_results = [self._filter_repo_fields(repo) for repo in self.results]
+        
         with open(output_file, 'w') as f:
-            json.dump(self.results, f, indent=2)
+            json.dump(filtered_results, f, indent=2)
+        
+        if output_settings['format'] == 'html':
+            self._save_results_as_html(output_settings['path'], timestamp, filtered_results)
+
+    def _save_results_as_html(self, path: str, timestamp: str, results: List[Dict[str, Any]]) -> None:
+        template_str = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>GitHub Repository Scraper Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; }
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #ddd; padding: 8px; }
+                th { background-color: #f2f2f2; }
+            </style>
+        </head>
+        <body>
+            <h1>GitHub Repository Scraper Report</h1>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Repository</th>
+                        <th>Description</th>
+                        <th>Stars</th>
+                        <th>Forks</th>
+                        <th>Open Issues</th>
+                        <th>Documentation Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for repo in results %}
+                    <tr>
+                        <td><a href="{{ repo.html_url }}">{{ repo.full_name }}</a></td>
+                        <td>{{ repo.description or 'No description' }}</td>
+                        <td>{{ repo.stargazers_count }}</td>
+                        <td>{{ repo.forks_count }}</td>
+                        <td>{{ repo.open_issues_count }}</td>
+                        <td>{{ repo.documentation_stats.quality_summary.score }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </body>
+        </html>
+        """
+        template = Template(template_str)
+        html_content = template.render(results=results)
+
+        output_file = f"{path}/repositories_{timestamp}.html"
+        with open(output_file, 'w') as f:
+            f.write(html_content)
