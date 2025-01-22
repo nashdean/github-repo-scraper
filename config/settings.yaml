@@ -6,7 +6,7 @@ api:
 
 scraper:
   max_repos: 5
-  topics: ["swift", "ios"]
+  topics: ["python", "documentation"]
   # Stars config is now optional. You can:
   # 1. Specify both min and max:
   stars:
@@ -33,8 +33,8 @@ scraper:
     # Add score threshold config
     score_threshold:
       enabled: true
-      min: 50  # Only include repos with score >= 50
-      max: null  # Include any score up to max (set null for no upper limit)
+      min: null  # Only include repos with score >= 50
+      max: 45  # Include any score up to max (set null for no upper limit)
     min_readme_words: 200  # Minimum words in README to be considered well-documented
     min_code_comment_ratio: 5  # Minimum percentage of comments to code
     require_docs_folder: true  # Require docs/ folder or equivalent

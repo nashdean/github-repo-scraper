@@ -77,12 +77,34 @@ class GitHubAPIClient:
             'User-Agent': 'Mozilla/5.0 (compatible; GitHubScraper/1.0)'
         })
 
+    def check_rate_limit(self) -> Dict[str, Any]:
+        """Check the current rate limit status."""
+        url = f"{self.base_url}/rate_limit"
+        response = self.session.get(url, timeout=self.timeout)
+        response.raise_for_status()
+        return response.json()
+
+    def print_rate_limit(self) -> None:
+        """Print the current rate limit status."""
+        rate_limit = self.check_rate_limit()
+        core_limit = rate_limit['resources']['core']
+        print(f"Rate limit: {core_limit['remaining']} remaining out of {core_limit['limit']}. Will reset at {datetime.fromtimestamp(core_limit['reset'])}")
+
     def _handle_rate_limit(self, response: requests.Response) -> None:
         if response.status_code == 403 and 'X-RateLimit-Remaining' in response.headers:
-            print(f"Rate limit remaining: {response.headers['X-RateLimit-Remaining']}. Will reset at {response.headers['X-RateLimit-Reset']}")
-            if int(response.headers['X-RateLimit-Remaining']) == 0:
-                print(f"Rate limit exceeded, pausing for {self.rate_limit_pause} seconds...")
-                time.sleep(self.rate_limit_pause)
+            remaining = int(response.headers['X-RateLimit-Remaining'])
+            reset_time = int(response.headers['X-RateLimit-Reset'])
+            if remaining == 0:
+                reset_datetime = datetime.fromtimestamp(reset_time)
+                wait_seconds = (reset_datetime - datetime.now()).total_seconds()
+                print(f"Rate limit exceeded, pausing until {reset_datetime}...")
+
+                while wait_seconds > 0:
+                    print(f"Time remaining: {int(wait_seconds // 60)} minutes and {int(wait_seconds % 60)} seconds")
+                    time.sleep(min(30, wait_seconds))
+                    wait_seconds -= 30
+
+                self.print_rate_limit()
 
     def search_repositories(self, query: str, page: int = 1) -> Dict[str, Any]:
         url = f"{self.base_url}/search/repositories"
@@ -128,6 +150,7 @@ class GitHubAPIClient:
 
     def get_user_contributions(self, username: str, days: int = 30) -> Dict[str, Any]:
         """Fetch user's recent contributions and activities."""
+        print(f"Fetching recent activity for {username}...")
         since_date = (datetime.now() - timedelta(days=days)).isoformat()
         
         # Get user events
@@ -164,6 +187,7 @@ class GitHubAPIClient:
     def _get_user_profile_html(self, username: str) -> Dict[str, Any]:
         """Get user's profile info through API and HTML scraping."""
         try:
+            print(f"Fetching profile info for {username}...")
             # First try to get email through GitHub API
             url = f"{self.base_url}/users/{username}"
             api_response = self.session.get(
@@ -247,6 +271,7 @@ class GitHubAPIClient:
     def _get_repo_documentation_stats(self, owner: str, repo: str) -> Dict[str, Any]:
         """Get documentation related statistics for a repository."""
         try:
+            print(f"Getting documentation stats for {owner}/{repo}...")
             # Get config values first
             doc_filter = self.config.get('scraper', {}).get('doc_filter', {})
             min_words = doc_filter.get('min_readme_words', 200)
@@ -457,6 +482,7 @@ class GitHubAPIClient:
     def _calculate_comment_ratio(self, owner: str, repo: str, language: str) -> float:
         """Calculate approximate comment to code ratio by sampling repository files."""
         try:
+            print(f"Calculating comment ratio for {owner}/{repo}...")
             # First get repository info to get default branch
             repo_info = self._get_repo_data(owner, repo)
             default_branch = repo_info.get('default_branch', 'main')  # Fallback to 'main' if not found
@@ -614,8 +640,9 @@ class GitHubAPIClient:
 
                         if is_comment:
                             comment_lines += 1
-            
-            return (comment_lines / total_lines * 100) if total_lines > 0 else 0
+
+            ratio = (comment_lines / total_lines * 100) if total_lines > 0 else 0
+            return ratio
 
         except Exception as e:
             print(f"Error calculating comment ratio for {owner}/{repo}: {str(e)}")
@@ -658,6 +685,7 @@ class GitHubAPIClient:
     def _scan_markdown_files(self, owner: str, repo: str, default_branch: str) -> Dict[str, Any]:
         """Scan repository for markdown files and their contents."""
         try:
+            print(f"Scanning markdown files for {owner}/{repo}...")
             # Get full repository tree
             url = f"{self.base_url}/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
             response = self.session.get(url, timeout=self.timeout)

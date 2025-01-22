@@ -89,10 +89,14 @@ class GitHubScraper:
         for topic in self.config['topics']:
             query = self._create_search_query(topic)
             page = 1
+            request_count = 0
             
             while len(self.results) < self.config['max_repos']:
                 print('Searching page:', page)
                 response = self.client.search_repositories(query, page)
+                request_count += 1
+                if request_count % 10 == 0:  # Print rate limit details every 10 requests
+                    self.client.print_rate_limit()
                 if not response['items']:
                     break
                     
@@ -104,6 +108,9 @@ class GitHubScraper:
                         repo['owner']['login'],
                         repo['name']
                     )
+                    request_count += 1
+                    if request_count % 10 == 0:  # Print rate limit details every 10 requests
+                        self.client.print_rate_limit()
                     print('Checking repo:', detailed_repo['full_name'])
                     # Only include repos that match documentation criteria
                     if self._should_include_repo(detailed_repo):
@@ -162,13 +169,26 @@ class GitHubScraper:
         
         filtered_results = [self._filter_repo_fields(repo) for repo in self.results]
         
+        rate_limit = self.client.check_rate_limit()
+        core_limit = rate_limit['resources']['core']
+        rate_limit_info = {
+            "rate_limit_remaining": core_limit['remaining'],
+            "rate_limit_reset": datetime.fromtimestamp(core_limit['reset']).isoformat()
+        }
+        
+        metadata = {
+            "timestamp": timestamp,
+            "settings": self.config,
+            "rate_limit_info": rate_limit_info
+        }
+        
         with open(output_file, 'w') as f:
-            json.dump(filtered_results, f, indent=2)
+            json.dump({"repositories": filtered_results, "metadata": metadata}, f, indent=2)
         
         if output_settings['format'] == 'html':
-            self._save_results_as_html(output_settings['path'], timestamp, filtered_results)
+            self._save_results_as_html(output_settings['path'], timestamp, filtered_results, metadata)
 
-    def _save_results_as_html(self, path: str, timestamp: str, results: List[Dict[str, Any]]) -> None:
+    def _save_results_as_html(self, path: str, timestamp: str, results: List[Dict[str, Any]], metadata: Dict[str, Any]) -> None:
         template_str = """
         <!DOCTYPE html>
         <html lang="en">
@@ -209,11 +229,18 @@ class GitHubScraper:
                     {% endfor %}
                 </tbody>
             </table>
+            <h2>Metadata</h2>
+            <p><strong>Timestamp:</strong> {{ metadata.timestamp }}</p>
+            <h3>Settings</h3>
+            <pre>{{ metadata.settings | tojson(indent=2) }}</pre>
+            <h3>Rate Limit Information</h3>
+            <p>Rate limit remaining: {{ metadata.rate_limit_info.rate_limit_remaining }}</p>
+            <p>Rate limit reset time: {{ metadata.rate_limit_info.rate_limit_reset }}</p>
         </body>
         </html>
         """
         template = Template(template_str)
-        html_content = template.render(results=results)
+        html_content = template.render(results=results, metadata=metadata)
 
         output_file = f"{path}/repositories_{timestamp}.html"
         with open(output_file, 'w') as f:
